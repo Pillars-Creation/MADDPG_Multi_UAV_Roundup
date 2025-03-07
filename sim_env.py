@@ -222,7 +222,8 @@ class UAVEnv:
             rewards[0:2] += mu3*r_capture
         
         ## 4 finish rewards
-        if Sum_S == S4 and all(d <= d_capture for d in [d1,d2,d3]):
+        # if Sum_S == S4 and all(d <= d_capture for d in [d1,d2,d3]):
+        if all(d <= d_capture for d in [d1,d2,d3]):
             rewards[0:2] += mu4*10
             dones = [True] * self.num_agents
 
