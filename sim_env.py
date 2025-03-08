@@ -249,7 +249,7 @@ class UAVEnv:
             dones.append(done)
         return dones
 
-    def render(self):
+    def render(self, episode):
 
         plt.clf()
         
@@ -294,6 +294,7 @@ class UAVEnv:
             plt.gca().add_patch(circle)
         plt.xlim(-0.1, self.length+0.1)
         plt.ylim(-0.1, self.length+0.1)
+        plt.text(0.02, 0.95, f'Episode: {episode}', transform=plt.gca().transAxes, color='black', fontsize=12)
         plt.draw()
         plt.legend()
         # plt.pause(0.01)
