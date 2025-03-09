@@ -217,7 +217,7 @@ class UAVEnv:
             r_encircle = -1/3*np.log(Sum_S - S4 + 1)
             rewards[0:2] += mu3*r_encircle
         # 3.4 stage-3 capture
-        elif Sum_S == S4 and any(d > d_capture for d in [d1,d2,d3]):
+        elif Sum_S <= S4 + 0.01 and any(d > d_capture for d in [d1,d2,d3]):
             r_capture = np.exp((Sum_last_d - Sum_d)/(3*self.v_max))
             rewards[0:2] += mu3*r_capture
         
@@ -229,6 +229,7 @@ class UAVEnv:
 
         return rewards,dones
 
+
     def update_lasers_isCollied_wrapper(self):
         self.multi_current_lasers = []
         dones = []
@@ -239,12 +240,77 @@ class UAVEnv:
             for obs in self.obstacles:
                 obs_pos = obs.position
                 r = obs.radius
-                _current_lasers, done = update_lasers(pos,obs_pos,r,self.L_sensor,self.num_lasers,self.length)
+                _current_lasers, done = update_lasers(pos, obs_pos, r, self.L_sensor, self.num_lasers, self.length)
                 current_lasers = [min(l, cl) for l, cl in zip(_current_lasers, current_lasers)]
                 done_obs.append(done)
             done = any(done_obs)
             if done:
+                # 速度降为零
                 self.multi_current_vel[i] = np.zeros(2)
+
+                # 防止智能体穿过障碍物
+                for obs in self.obstacles:
+                    obs_pos = obs.position
+                    r = obs.radius
+                    agent_to_obs = obs_pos - pos
+                    dist = np.linalg.norm(agent_to_obs)
+                    if dist < r:
+                        # 调整智能体位置到障碍物边缘
+                        direction = agent_to_obs / dist
+                        new_pos = obs_pos - direction * r
+                        self.multi_current_pos[i] = new_pos
+
+                # 让智能体以合理的角度反弹
+                valid_angle_found = False
+                max_attempts = 100  # 最大尝试次数，避免无限循环
+                attempts = 0
+                while not valid_angle_found and attempts < max_attempts:
+                    # 随机生成一个角度
+                    angle = np.random.uniform(-np.pi, np.pi)
+                    rotation_matrix = np.array([[np.cos(angle), -np.sin(angle)],
+                                                [np.sin(angle), np.cos(angle)]])
+                    # 假设一个小的速度向量
+                    new_vel = np.array([0.1, 0])
+                    new_vel = np.dot(rotation_matrix, new_vel)
+
+                    # 预测下一个位置
+                    next_pos = pos + new_vel
+
+                    # 检查下一个位置是否会与障碍物碰撞或超出边界
+                    valid = True
+                    for obs in self.obstacles:
+                        obs_pos = obs.position
+                        r = obs.radius
+                        agent_to_obs = obs_pos - next_pos
+                        dist = np.linalg.norm(agent_to_obs)
+                        if dist < r:
+                            valid = False
+                            break
+                    # 检查是否超出边界
+                    if next_pos[0] < 0 or next_pos[0] > self.length or next_pos[1] < 0 or next_pos[1] > self.length:
+                        valid = False
+
+                    if valid:
+                        valid_angle_found = True
+                        self.multi_current_vel[i] = new_vel
+                    attempts += 1
+
+                if not valid_angle_found:
+                    # 如果多次尝试都没有找到合适的角度，给一个默认的安全方向
+                    # 这里简单地将智能体向远离最近障碍物的方向推动
+                    min_dist = float('inf')
+                    closest_obs = None
+                    for obs in self.obstacles:
+                        obs_pos = obs.position
+                        agent_to_obs = obs_pos - pos
+                        dist = np.linalg.norm(agent_to_obs)
+                        if dist < min_dist:
+                            min_dist = dist
+                            closest_obs = obs
+                    if closest_obs is not None:
+                        direction = (pos - closest_obs.position) / min_dist
+                        self.multi_current_vel[i] = direction * 0.1
+
             self.multi_current_lasers.append(current_lasers)
             dones.append(done)
         return dones
